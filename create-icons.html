@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon Generator - MBTA 426 Tracker</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #5f6368;
+            margin-bottom: 30px;
+        }
+        canvas {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: block;
+        }
+        button {
+            background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .preview {
+            display: flex;
+            gap: 20px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        .preview-item {
+            text-align: center;
+        }
+        .preview-item img {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .preview-item p {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #5f6368;
+        }
+        .instructions {
+            background: #e8f0fe;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+            border-left: 4px solid #1a73e8;
+        }
+        .instructions h3 {
+            color: #1a73e8;
+            margin-top: 0;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            color: #3c4043;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚌 MBTA 426 Tracker - Icon Generator</h1>
+        <p>Generate PWA icons for your bus tracker app. Click the buttons below to download the icons.</p>
+        
+        <canvas id="canvas512" width="512" height="512" style="display:none;"></canvas>
+        <canvas id="canvas192" width="192" height="192" style="display:none;"></canvas>
+        
+        <div>
+            <button onclick="generateIcons()">Generate Icons</button>
+            <button onclick="downloadIcon(512)">Download 512x512 Icon</button>
+            <button onclick="downloadIcon(192)">Download 192x192 Icon</button>
+        </div>
+        
+        <div class="preview" id="preview"></div>
+        
+        <div class="instructions">
+            <h3>📋 Instructions</h3>
+            <ol>
+                <li>Click "Generate Icons" to create the app icons</li>
+                <li>Click "Download 512x512 Icon" and save as <code>icon-512.png</code></li>
+                <li>Click "Download 192x192 Icon" and save as <code>icon-192.png</code></li>
+                <li>Place both files in the same folder as your <code>index.html</code></li>
+                <li>Your PWA will now have custom icons when installed!</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            
+            // Create gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#1a73e8');
+            gradient.addColorStop(1, '#4285f4');
+            
+            // Fill background
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Add rounded corners effect
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.beginPath();
+            const radius = size * 0.15;
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(size - radius, 0);
+            ctx.quadraticCurveTo(size, 0, size, radius);
+            ctx.lineTo(size, size - radius);
+            ctx.quadraticCurveTo(size, size, size - radius, size);
+            ctx.lineTo(radius, size);
+            ctx.quadraticCurveTo(0, size, 0, size - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.globalCompositeOperation = 'source-over';
+            
+            // Draw bus emoji
+            ctx.font = `${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🚌', size / 2, size * 0.35);
+            
+            // Draw route number
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.25}px Arial`;
+            ctx.fillText('426', size / 2, size * 0.7);
+            
+            // Add subtle shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = size * 0.02;
+            ctx.shadowOffsetY = size * 0.01;
+        }
+        
+        function generateIcons() {
+            // Generate 512x512
+            const canvas512 = document.getElementById('canvas512');
+            drawIcon(canvas512, 512);
+            
+            // Generate 192x192
+            const canvas192 = document.getElementById('canvas192');
+            drawIcon(canvas192, 192);
+            
+            // Show preview
+            const preview = document.getElementById('preview');
+            preview.innerHTML = `
+                <div class="preview-item">
+                    <img src="${canvas512.toDataURL()}" width="128" height="128" alt="512x512 icon">
+                    <p><strong>512x512</strong><br>High resolution</p>
+                </div>
+                <div class="preview-item">
+                    <img src="${canvas192.toDataURL()}" width="96" height="96" alt="192x192 icon">
+                    <p><strong>192x192</strong><br>Standard resolution</p>
+                </div>
+            `;
+            
+            alert('✅ Icons generated! Click the download buttons to save them.');
+        }
+        
+        function downloadIcon(size) {
+            const canvas = document.getElementById(`canvas${size}`);
+            
+            // Check if icon has been generated
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, 1, 1);
+            if (imageData.data[3] === 0) {
+                alert('Please click "Generate Icons" first!');
+                return;
+            }
+            
+            // Create download link
+            canvas.toBlob(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon-${size}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        // Auto-generate on load
+        window.addEventListener('load', () => {
+            setTimeout(generateIcons, 500);
+        });
+    </script>
+</body>
+</html>

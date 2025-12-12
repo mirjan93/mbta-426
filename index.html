@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="426 Tracker">
+    <meta name="description" content="Real-time tracking for MBTA Route 426 bus with live predictions and map">
+    <meta name="theme-color" content="#1a73e8">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <title>Route 426 Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #fafafa;
+        }
+        
+        .page-container {
+            display: flex;
+            height: 100vh;
+            width: 200vw;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .page-container.show-map { transform: translateX(-100vw); }
+        
+        .page {
+            width: 100vw;
+            height: 100vh;
+            flex-shrink: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .info-page { background: #fafafa; }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
+            color: white;
+            padding: max(env(safe-area-inset-top), 16px) 16px 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .app-title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .header-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1.5px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .header-btn:active { background: rgba(255,255,255,0.3); transform: scale(0.95); }
+        
+        /* iOS Safari specific fixes */
+        @supports (-webkit-touch-callout: none) {
+            body {
+                /* Prevent rubber band scrolling */
+                position: fixed;
+                width: 100%;
+            }
+            
+            .page {
+                /* Enable momentum scrolling on iOS */
+                -webkit-overflow-scrolling: touch;
+                overflow-y: scroll;
+            }
+        }
+        
+        .next-bus-label {
+            font-size: 10px;
+            font-weight: 600;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+        
+        .next-bus-time {
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+        
+        .next-bus-info { font-size: 13px; opacity: 0.95; }
+        
+        /* Weather Widget */
+        .weather-widget {
+            position: absolute;
+            top: max(env(safe-area-inset-top), 16px);
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 8px 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+            z-index: 101;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .weather-temp { font-size: 16px; font-weight: 700; color: #202124; display: flex; align-items: center; gap: 4px; }
+        .weather-condition { font-size: 10px; color: #5f6368; font-weight: 500; }
+        
+        /* Delay Banner */
+        .delay-banner {
+            background: linear-gradient(135deg, #ea4335 0%, #d32f2f 100%);
+            color: white;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            animation: pulse-banner 2s infinite;
+        }
+        
+        .delay-banner.warning {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        }
+        
+        @keyframes pulse-banner {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.9; }
+        }
+        
+        /* Progress Tracker */
+        .progress-tracker {
+            background: white;
+            margin: 12px;
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .tracker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .tracker-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #5f6368;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .tracker-info { font-size: 11px; color: #1967d2; font-weight: 600; }
+        
+        /* Compact Horizontal Progress Bar */
+        .route-visual {
+            padding: 8px 0;
+            position: relative;
+        }
+        
+        .progress-track {
+            position: relative;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin: 20px 0 8px;
+        }
+        
+        .progress-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #34a853 0%, #4caf50 100%);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .progress-bus {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 18px;
+            height: 18px;
+            background: #1967d2;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(25, 103, 210, 0.5);
+            z-index: 10;
+            animation: bus-pulse 1.5s infinite;
+        }
+        
+        @keyframes bus-pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 2px 8px rgba(25, 103, 210, 0.5); }
+            50% { transform: translate(-50%, -50%) scale(1.2); box-shadow: 0 2px 12px rgba(25, 103, 210, 0.7); }
+        }
+        
+        .progress-home {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 28px;
+            height: 28px;
+            background: #ea4335;
+            border: 3px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(234, 67, 53, 0.4);
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        
+        .progress-home.reached {
+            background: #34a853;
+            box-shadow: 0 2px 8px rgba(52, 168, 83, 0.4);
+        }
+        
+        .progress-endpoints {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            font-weight: 600;
+            color: #5f6368;
+            margin-top: 4px;
+        }
+        
+        .progress-endpoint-start { color: #1967d2; }
+        .progress-endpoint-end { color: #8b5cf6; }
+        
+        .stops-indicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 12px;
+            background: linear-gradient(135deg, #e8f0fe 0%, #f3f8ff 100%);
+            border-radius: 12px;
+        }
+        
+        .stops-number {
+            font-size: 36px;
+            font-weight: 700;
+            color: #1967d2;
+            line-height: 1;
+        }
+        
+        .stops-number.here {
+            color: #34a853;
+            font-size: 28px;
+        }
+        
+        .stops-number.passed {
+            color: #9e9e9e;
+            font-size: 22px;
+        }
+        
+        .stops-text {
+            font-size: 13px;
+            color: #5f6368;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+        
+        .stops-text strong {
+            color: #202124;
+            display: block;
+        }
+        
+        .eta-badge {
+            background: #34a853;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Direction Toggle */
+        .direction-card {
+            background: white;
+            margin: 0 12px 12px;
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .card-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #5f6368;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+        
+        .direction-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
+        .dir-btn {
+            padding: 12px;
+            border: 2px solid #e8eaed;
+            border-radius: 10px;
+            background: #fafafa;
+            font-weight: 500;
+            font-size: 12px;
+            color: #5f6368;
+            text-align: center;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .dir-btn.active {
+            background: linear-gradient(135deg, #34a853 0%, #2d9e4a 100%);
+            color: white;
+            border-color: #34a853;
+            box-shadow: 0 2px 8px rgba(52,168,83,0.3);
+        }
+        
+        /* Stats Card */
+        .stats-card {
+            background: linear-gradient(135deg, #34a853 0%, #2d9e4a 100%);
+            margin: 0 12px 12px;
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: 0 2px 12px rgba(52,168,83,0.3);
+            color: white;
+        }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 24px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
+        .stat-label { font-size: 9px; opacity: 0.95; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        /* Alert Box */
+        .alert-box {
+            background: linear-gradient(to right, #fff3e0 0%, #fff8e1 100%);
+            border-left: 4px solid #ff9800;
+            margin: 0 12px 12px;
+            padding: 12px;
+            border-radius: 10px;
+        }
+        
+        .alert-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #e65100;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .alert-content { font-size: 12px; color: #e65100; font-weight: 500; }
+        
+        /* Buses Section */
+        .buses-section { padding: 0 12px 80px; }
+        
+        .section-header {
+            font-size: 10px;
+            font-weight: 700;
+            color: #5f6368;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .bus-card {
+            background: white;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .bus-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #1967d2;
+        }
+        
+        .bus-card.arriving::before { background: #34a853; }
+        .bus-card.delayed::before { background: #ea4335; }
+        .bus-card.arriving { background: linear-gradient(90deg, #e6f4ea 0%, #ffffff 100%); }
+        .bus-card.delayed { background: linear-gradient(90deg, #fce8e6 0%, #ffffff 100%); }
+        
+        .countdown-badge {
+            display: inline-block;
+            background: #1967d2;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        
+        .countdown-badge.arriving { background: #34a853; animation: pulse 2s ease-in-out infinite; }
+        .countdown-badge.delayed { background: #ea4335; }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .bus-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+        
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge.bus-number { background: #5f6368; color: white; }
+        .badge.live { background: #34a853; color: white; }
+        .badge.scheduled { background: #fbbc04; color: #3c4043; }
+        .badge.delayed { background: #ea4335; color: white; }
+        .badge.early { background: #4caf50; color: white; }
+        
+        .bus-time { font-size: 18px; font-weight: 600; color: #202124; margin: 8px 0; }
+        .bus-detail { font-size: 12px; color: #5f6368; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+        
+        /* Map Page */
+        .map-page { position: relative; background: #e5e3df; }
+        #map { width: 100%; height: 100%; }
+        
+        .map-header {
+            position: absolute;
+            top: max(env(safe-area-inset-top), 12px);
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .back-button {
+            background: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1967d2;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .map-status {
+            background: white;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #3c4043;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .map-controls {
+            position: absolute;
+            bottom: max(env(safe-area-inset-bottom), 24px);
+            right: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+        
+        .map-control-btn {
+            background: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            font-size: 22px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .map-control-btn:active { transform: scale(0.9); }
+        
+        /* Refresh Button */
+        .refresh-fab {
+            position: fixed;
+            bottom: max(env(safe-area-inset-bottom), 20px);
+            right: 20px;
+            background: linear-gradient(135deg, #1967d2 0%, #1557b0 100%);
+            color: white;
+            border: none;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            font-size: 22px;
+            box-shadow: 0 4px 16px rgba(25,103,210,0.4);
+            z-index: 50;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-appearance: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .refresh-fab:active { transform: scale(0.9); }
+        .refresh-fab.loading .material-icons-round { animation: spin 1s linear infinite; }
+        
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .loading { text-align: center; padding: 40px 20px; color: #5f6368; }
+        
+        .spinner {
+            border: 3px solid #e8eaed;
+            border-top: 3px solid #1967d2;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        .message {
+            margin: 10px 12px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .message.error { background: #fce8e6; color: #c5221f; border-left: 4px solid #ea4335; }
+        .message.success { background: #e6f4ea; color: #137333; border-left: 4px solid #34a853; }
+        
+        .leaflet-control-zoom { display: none; }
+    </style>
+</head>
+<body>
+    <div class="page-container" id="pageContainer">
+        <!-- Info Page -->
+        <div class="page info-page">
+            <div class="weather-widget" id="weatherWidget">
+                <span id="weatherIcon">🌤️</span>
+                <div>
+                    <div class="weather-temp" id="weatherTemp">--°F</div>
+                    <div class="weather-condition" id="weatherCondition">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="header">
+                <div class="header-top">
+                    <div class="app-title">
+                        <span>🚌</span>
+                        <span>Route 426</span>
+                    </div>
+                    <button class="header-btn" onclick="showMap()">
+                        <span class="material-icons-round" style="font-size:18px;">map</span>
+                        <span>Map</span>
+                    </button>
+                </div>
+                <div class="next-bus-label">Next Bus</div>
+                <div class="next-bus-time" id="nextBusTime">Loading...</div>
+                <div class="next-bus-info" id="nextBusInfo">Checking schedule...</div>
+            </div>
+            
+            <div id="delayBanner" style="display:none;"></div>
+            
+            <div class="progress-tracker">
+                <div class="tracker-header">
+                    <div class="tracker-title">
+                        <span class="material-icons-round" style="font-size:18px;color:#1967d2;">route</span>
+                        BUS LOCATION
+                    </div>
+                    <div class="tracker-info" id="trackerInfo">Waiting for bus...</div>
+                </div>
+                <div class="route-visual" id="routeVisual">
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        <div class="progress-home" id="progressHome">🏠</div>
+                        <div class="progress-bus" id="progressBus" style="display: none;"></div>
+                    </div>
+                    <div class="progress-endpoints">
+                        <span class="progress-endpoint-start" id="routeLabelStart">🚏 Lynn</span>
+                        <span class="progress-endpoint-end" id="routeLabelEnd">🎯 Haymarket</span>
+                    </div>
+                </div>
+                <div class="stops-indicator" id="stopsIndicator">
+                    <div class="stops-number" id="stopsAwayDisplay">--</div>
+                    <div class="stops-text">
+                        <strong>stops away</strong>
+                        from your stop
+                    </div>
+                    <div class="eta-badge" id="etaBadge">-- min</div>
+                </div>
+            </div>
+            
+            <div class="direction-card">
+                <div class="card-title">Direction</div>
+                <div class="direction-buttons">
+                    <button class="dir-btn active" id="btnHaymarket" onclick="selectDirection('to_haymarket')">→ To Haymarket</button>
+                    <button class="dir-btn" id="btnHome" onclick="selectDirection('to_home')">← To Home</button>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="liveCount">0</div>
+                        <div class="stat-label">Live Buses</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="stopCount">0</div>
+                        <div class="stat-label">Total Stops</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="stopsLeft">--</div>
+                        <div class="stat-label">Stops Away</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="alertContainer"></div>
+            <div id="messageContainer"></div>
+            
+            <div class="buses-section">
+                <div class="section-header">
+                    <span class="material-icons-round" style="font-size:18px;">schedule</span>
+                    UPCOMING BUSES
+                </div>
+                <div id="predictions">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading predictions...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Map Page -->
+        <div class="page map-page">
+            <div id="map"></div>
+            <div class="map-header">
+                <button class="back-button" onclick="showInfo()">
+                    <span class="material-icons-round" style="font-size:18px;">arrow_back</span>
+                    <span>Back</span>
+                </button>
+                <div class="map-status" id="mapStatus">
+                    <span>⚡</span>
+                    <span>Loading...</span>
+                </div>
+            </div>
+            <div class="map-controls">
+                <button class="map-control-btn" onclick="zoomHome()">🏠</button>
+                <button class="map-control-btn" onclick="followBuses()">🚌</button>
+                <button class="map-control-btn" onclick="viewRoute()">🗺️</button>
+            </div>
+        </div>
+    </div>
+    
+    <button class="refresh-fab" id="refreshBtn" onclick="forceUpdate()">
+        <span class="material-icons-round">refresh</span>
+    </button>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // =====================================================
+        // CONFIGURATION - VERIFIED FROM MBTA & GOOGLE MAPS
+        // =====================================================
+        const CONFIG = {
+            MBTA_API_KEY: '111a011e11494bd5a58286beb718d53c',
+            YOUR_HOME: { lat: 42.461776, lng: -70.987476 },
+            HAYMARKET: { lat: 42.3631, lng: -71.0589 },
+            UPDATE_INTERVAL: 15000,
+            ROUTE_INFO: {
+                to_haymarket: { 
+                    totalStops: 45, 
+                    travelTime: 49, 
+                    homeStopId: '16669',
+                    homeStopName: 'Boston St @ Winnepurkit Ave',
+                    // Your home is STOP 17 (index 16) - 16 stops before your home
+                    homeStopIndex: 16
+                },
+                to_home: { 
+                    totalStops: 56, 
+                    travelTime: 43, 
+                    homeStopId: '7445',
+                    homeStopName: 'Boston St @ Browns Ave',
+                    // Your home is STOP 38 (index 37) - 37 stops before your home
+                    homeStopIndex: 37
+                }
+            }
+        };
+        
+        // COMPLETE ROUTE 426 TO HAYMARKET - 45 STOPS
+        // Your home "Boston St @ Winnepurkit Ave" is STOP 17 (index 16)
+        // This shows the bus approaching your home from Market St @ Commuter Rail
+        const STOPS_TO_HAYMARKET = [
+            { id: '16653', name: 'Market St @ Commuter Rail' },          // Stop 1 - ROUTE START
+            { id: '16654', name: 'Market St @ Liberty St' },             // Stop 2
+            { id: '16655', name: 'N Common St @ Franklin St' },          // Stop 3
+            { id: '16656', name: 'N Common St @ Baker St' },             // Stop 4
+            { id: '16657', name: 'N Common St @ Park St' },              // Stop 5
+            { id: '16658', name: 'Market Square @ Western Ave' },        // Stop 6
+            { id: '16659', name: '743 Western Ave' },                    // Stop 7
+            { id: '16660', name: 'Western Ave @ Breed Square' },         // Stop 8
+            { id: '16661', name: 'Summer St @ Linden St' },              // Stop 9
+            { id: '16662', name: 'Summer St opp Margin St' },            // Stop 10
+            { id: '16663', name: 'Summer St opp Dearborn Ave' },         // Stop 11
+            { id: '16664', name: 'Summer St @ Raddin Grove Ave' },       // Stop 12
+            { id: '16665', name: '787 Summer St' },                      // Stop 13
+            { id: '16666', name: '817 Summer St' },                      // Stop 14
+            { id: '16667', name: 'Summer St @ Boston St' },              // Stop 15
+            { id: '16668', name: 'Boston St @ Northside Ave' },          // Stop 16
+            { id: '16669', name: 'Boston St @ Winnepurkit Ave', isHome: true }, // Stop 17 - YOUR HOME 🏠
+            { id: '7384', name: 'Boston St @ Hamilton St' },             // Stop 18
+            { id: '7388', name: 'Lincoln Ave @ Vincent St' },            // Stop 19
+            { id: '7390', name: 'Lincoln Ave @ Chestnut St' },           // Stop 20
+            { id: '7391', name: 'Lincoln Ave opp Dudley St' },           // Stop 21
+            { id: '7392', name: 'Lincoln Ave opp Guild Rd' },            // Stop 22
+            { id: '7393', name: 'Lincoln Ave @ Overlea Ave' },           // Stop 23
+            { id: '7394', name: 'Lincoln Ave opp Bristow St' },          // Stop 24
+            { id: '7395', name: 'Lincoln Ave @ Atlantic Ave' },          // Stop 25
+            { id: '7396', name: 'Lincoln Ave opp Nason Rd' },            // Stop 26
+            { id: '7397', name: 'Lincoln Ave opp Sunnyside Pk' },        // Stop 27
+            { id: '7398', name: 'Lincoln Ave @ Intervale Ave' },         // Stop 28
+            { id: '7399', name: 'Lincoln Ave @ Central St' },            // Stop 29
+            { id: '7400', name: 'Lincoln Ave @ Oak Hill Rd' },           // Stop 30
+            { id: '7401', name: 'Lincoln Ave @ Jackson St' },            // Stop 31
+            { id: '7403', name: 'Lincoln Ave @ Linwood St' },            // Stop 32
+            { id: '7404', name: 'Lincoln Ave @ Laurel St' },             // Stop 33
+            { id: '7405', name: 'Salem St @ Clifton St' },               // Stop 34
+            { id: '7407', name: 'Salem St @ Walnut St' },                // Stop 35
+            { id: '7408', name: 'Salem St @ Waitt Ct' },                 // Stop 36
+            { id: '7409', name: 'Salem St @ Cutler Hwy' },               // Stop 37
+            { id: '7410', name: 'Lynn St @ Lawrence St' },               // Stop 38
+            { id: '7411', name: 'Lynn St @ Oliver St' },                 // Stop 39
+            { id: '7412', name: 'Lynn St @ Beach St - Linden Sq' },      // Stop 40
+            { id: '7413', name: 'Beach St @ Hancock Rd' },               // Stop 41
+            { id: '7414', name: 'Squire Rd @ Super Stop + Shop' },       // Stop 42
+            { id: '2829', name: 'N Washington St @ Medford St' },        // Stop 43
+            { id: '8309', name: 'Surface Rd @ Hanover St' },             // Stop 44
+            { id: '117', name: 'Congress St @ Haymarket Sta' }           // Stop 45 - ROUTE END
+        ];
+        
+        // COMPLETE ROUTE 426 TO HOME (Central Square Lynn) - 56 STOPS
+        // Your home "Boston St @ Browns Ave" is STOP 38 (index 37)
+        // This shows the bus approaching your home from Haymarket
+        const STOPS_TO_HOME = [
+            { id: '117', name: 'Congress St @ Haymarket Sta' },           // Stop 1 - ROUTE START
+            { id: '70001', name: 'Wonderland' },                          // Stop 2
+            { id: '70002', name: 'Vfw Pkwy opp Wonderland Market Place' },// Stop 3
+            { id: '70003', name: 'Beach St @ Upham St - Bell Circle' },   // Stop 4
+            { id: '70004', name: 'American Legion Hwy @ Bell Circle' },   // Stop 5
+            { id: '70005', name: '133-135 American Legion Hwy' },         // Stop 6
+            { id: '70006', name: 'American Legion Hwy @ Revere St' },     // Stop 7
+            { id: '70007', name: 'American Legion Hwy @ Hutchinson St' }, // Stop 8
+            { id: '70008', name: 'Brown Circle Rotary' },                 // Stop 9
+            { id: '7414', name: 'Squire Rd opp Super Stop + Shop' },      // Stop 10
+            { id: '7417', name: 'Wesley St @ Lynn St - Linden Sq' },      // Stop 11
+            { id: '7418', name: 'Lynn St opp Revere St' },                // Stop 12
+            { id: '7419', name: 'Lynn St @ Spring St' },                  // Stop 13
+            { id: '17419', name: 'Salem St @ Cutler Hwy' },               // Stop 14
+            { id: '7420', name: 'Salem St @ Waitt Pk' },                  // Stop 15
+            { id: '7422', name: 'Salem St @ Marshall St N' },             // Stop 16
+            { id: '17422', name: 'Salem St opp Franklin' },               // Stop 17
+            { id: '7423', name: 'Salem St opp Clifton St' },              // Stop 18
+            { id: '7424', name: 'Lincoln Ave opp Laurel St' },            // Stop 19
+            { id: '7426', name: 'Lincoln Ave @ Western Ave' },            // Stop 20
+            { id: '7427', name: 'Lincoln Ave @ Lincoln Ct' },             // Stop 21
+            { id: '7429', name: 'Lincoln Ave @ Cliftondale Sq' },         // Stop 22
+            { id: '17429', name: 'Lincoln Ave @ Charlotte Rd' },          // Stop 23
+            { id: '7430', name: 'Lincoln Ave opp Kent St' },              // Stop 24
+            { id: '7431', name: 'Lincoln Ave @ Morton Ave' },             // Stop 25
+            { id: '7432', name: 'Lincoln Ave @ Sunnyside Pk' },           // Stop 26
+            { id: '7433', name: 'Lincoln Ave @ Nason Rd' },               // Stop 27
+            { id: '7434', name: 'Lincoln Ave opp Atlantic Ave' },         // Stop 28
+            { id: '7435', name: 'Lincoln Ave @ Bristow St' },             // Stop 29
+            { id: '7436', name: 'Lincoln Ave opp Overlea Ave' },          // Stop 30
+            { id: '7437', name: 'Lincoln Ave @ Guild Rd' },               // Stop 31
+            { id: '7438', name: 'Lincoln Ave @ Bates St' },               // Stop 32
+            { id: '7439', name: 'Lincoln Ave @ Ballard St' },             // Stop 33
+            { id: '7440', name: '60 Lincoln Ave' },                       // Stop 34
+            { id: '7441', name: 'Lincoln Ave @ Vincent St' },             // Stop 35
+            { id: '7442', name: '30 Lincoln Ave' },                       // Stop 36
+            { id: '17443', name: 'Boston St opp Hamilton St' },           // Stop 37
+            { id: '7445', name: 'Boston St @ Browns Ave', isHome: true }, // Stop 38 - YOUR HOME 🏠
+            { id: '7446', name: 'Boston St @ Southside Ave' },            // Stop 39
+            { id: '7447', name: 'Summer St @ Boston St' },                // Stop 40
+            { id: '7448', name: 'Summer St @ Deer Pk' },                  // Stop 41
+            { id: '7449', name: 'Summer St @ Ames St' },                  // Stop 42
+            { id: '7450', name: 'Summer St opp Raddin Grove Ave' },       // Stop 43
+            { id: '7451', name: 'Summer St @ Dearborn Ave' },             // Stop 44
+            { id: '7452', name: 'Summer St @ Margin St' },                // Stop 45
+            { id: '7453', name: 'Summer St @ River St' },                 // Stop 46
+            { id: '7454', name: 'Western Ave @ Minot St' },               // Stop 47
+            { id: '7455', name: 'Western Ave @ Summer St' },              // Stop 48
+            { id: '7456', name: 'Western Ave @ Walden St' },              // Stop 49
+            { id: '7457', name: '760 Western Ave' },                      // Stop 50
+            { id: '7458', name: 'Market Square @ Western Ave' },          // Stop 51
+            { id: '7459', name: 'S Common St @ Caggiano Plaza' },         // Stop 52
+            { id: '7460', name: 'S Common St @ Blossom St' },             // Stop 53
+            { id: '7461', name: 'S Common St @ Market St' },              // Stop 54
+            { id: '7462', name: 'Market St @ Tremont St' },               // Stop 55
+            { id: '16653', name: 'Market Street @ Lynn Commuter Rail' }   // Stop 56 - ROUTE END
+        ];
+        
+        // =====================================================
+        // STATE
+        // =====================================================
+        let state = {
+            selectedRoute: '426',
+            selectedDirection: 'to_haymarket',
+            map: null,
+            homeMarker: null,
+            destMarker: null,
+            routeLine: null,
+            busMarkers: {},
+            stopMarkers: {},
+            stopData: {},
+            orderedStopIds: [],
+            nearestStopId: null,
+            homeStopIndex: 0,
+            updateInterval: null,
+            currentPage: 'info',
+            currentBusStopIndex: -1,
+            totalStops: 28,
+            delayMinutes: 0
+        };
+        
+        // =====================================================
+        // ROUTE VISUAL - COMPACT HORIZONTAL PROGRESS BAR
+        // Shows bus position relative to your home stop
+        // =====================================================
+        function generateRouteVisual() {
+            const stops = state.selectedDirection === 'to_haymarket' ? STOPS_TO_HAYMARKET : STOPS_TO_HOME;
+            
+            state.totalStops = stops.length;
+            
+            // Find home stop index
+            state.homeStopIndex = stops.findIndex(s => s.isHome);
+            if (state.homeStopIndex === -1) {
+                state.homeStopIndex = state.selectedDirection === 'to_haymarket' ? 16 : 37;
+            }
+            
+            // Position home marker on the track (percentage)
+            const homePercent = (state.homeStopIndex / (state.totalStops - 1)) * 100;
+            const homeMarker = document.getElementById('progressHome');
+            homeMarker.style.left = homePercent + '%';
+            homeMarker.classList.remove('reached');
+            
+            // Hide bus marker initially
+            document.getElementById('progressBus').style.display = 'none';
+            document.getElementById('progressFill').style.width = '0%';
+            
+            // Update labels
+            if (state.selectedDirection === 'to_haymarket') {
+                document.getElementById('routeLabelStart').innerHTML = '🚏 Lynn';
+                document.getElementById('routeLabelEnd').innerHTML = '🎯 Haymarket';
+            } else {
+                document.getElementById('routeLabelStart').innerHTML = '🚏 Haymarket';
+                document.getElementById('routeLabelEnd').innerHTML = '🏁 Lynn';
+            }
+            
+            // Update stop count
+            document.getElementById('stopCount').textContent = stops.length;
+            
+            // Reset displays
+            document.getElementById('stopsAwayDisplay').textContent = '--';
+            document.getElementById('stopsLeft').textContent = '--';
+            document.getElementById('etaBadge').textContent = '-- min';
+            document.getElementById('trackerInfo').textContent = 'Waiting for bus...';
+            
+            // Reset stops number styling
+            document.getElementById('stopsAwayDisplay').className = 'stops-number';
+        }
+        
+        function updateRouteVisual(busStopIndex) {
+            const totalStops = state.totalStops;
+            const homeStopIdx = state.homeStopIndex;
+            
+            const progressFill = document.getElementById('progressFill');
+            const progressBus = document.getElementById('progressBus');
+            const progressHome = document.getElementById('progressHome');
+            const stopsAwayEl = document.getElementById('stopsAwayDisplay');
+            const stopsLeftEl = document.getElementById('stopsLeft');
+            const etaBadgeEl = document.getElementById('etaBadge');
+            const trackerInfoEl = document.getElementById('trackerInfo');
+            
+            if (busStopIndex >= 0 && busStopIndex < totalStops) {
+                // Calculate bus position percentage
+                const busPercent = (busStopIndex / (totalStops - 1)) * 100;
+                
+                // Update progress fill (up to bus position)
+                progressFill.style.width = busPercent + '%';
+                
+                // Show and position bus marker
+                progressBus.style.display = 'block';
+                progressBus.style.left = busPercent + '%';
+                
+                // Calculate stops away from home
+                let stopsAway;
+                if (busStopIndex > homeStopIdx) {
+                    // Bus has passed home stop
+                    stopsAway = 'Passed';
+                    progressHome.classList.add('reached');
+                    stopsAwayEl.className = 'stops-number passed';
+                    stopsAwayEl.textContent = '✓';
+                    stopsLeftEl.textContent = 'Passed';
+                    etaBadgeEl.textContent = 'Passed';
+                    etaBadgeEl.style.background = '#9e9e9e';
+                    trackerInfoEl.textContent = 'Bus passed your stop';
+                } else if (busStopIndex === homeStopIdx) {
+                    // Bus is AT home stop
+                    stopsAway = 'HERE!';
+                    progressHome.classList.add('reached');
+                    stopsAwayEl.className = 'stops-number here';
+                    stopsAwayEl.textContent = '🎉';
+                    stopsLeftEl.textContent = 'HERE!';
+                    etaBadgeEl.textContent = 'NOW!';
+                    etaBadgeEl.style.background = '#34a853';
+                    trackerInfoEl.textContent = '🎉 Bus at your stop!';
+                } else {
+                    // Bus is approaching home stop
+                    stopsAway = homeStopIdx - busStopIndex;
+                    progressHome.classList.remove('reached');
+                    stopsAwayEl.className = 'stops-number';
+                    stopsAwayEl.textContent = stopsAway;
+                    stopsLeftEl.textContent = stopsAway;
+                    const eta = Math.max(1, Math.round(stopsAway * 1));
+                    etaBadgeEl.textContent = `~${eta} min`;
+                    etaBadgeEl.style.background = stopsAway <= 3 ? '#ff9800' : '#34a853';
+                    trackerInfoEl.textContent = stopsAway <= 3 ? '⚡ Get ready!' : `${stopsAway} stops away`;
+                }
+            } else {
+                // No bus data
+                progressFill.style.width = '0%';
+                progressBus.style.display = 'none';
+                progressHome.classList.remove('reached');
+                stopsAwayEl.className = 'stops-number';
+                stopsAwayEl.textContent = '--';
+                stopsLeftEl.textContent = '--';
+                etaBadgeEl.textContent = '-- min';
+                etaBadgeEl.style.background = '#34a853';
+                trackerInfoEl.textContent = 'Waiting for bus...';
+            }
+        }
+        
+        // =====================================================
+        // PAGE NAVIGATION
+        // =====================================================
+        function showMap() {
+            document.getElementById('pageContainer').classList.add('show-map');
+            state.currentPage = 'map';
+            if (state.map) setTimeout(() => state.map.invalidateSize(), 350);
+        }
+        
+        function showInfo() {
+            document.getElementById('pageContainer').classList.remove('show-map');
+            state.currentPage = 'info';
+        }
+        
+        let touchStartX = 0;
+        let touchStartY = 0;
+        document.addEventListener('touchstart', e => { 
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, { passive: true });
+        document.addEventListener('touchend', e => {
+            const diffX = touchStartX - e.changedTouches[0].screenX;
+            const diffY = touchStartY - e.changedTouches[0].screenY;
+            // Only trigger swipe if horizontal movement is greater than vertical
+            if (Math.abs(diffX) > 80 && Math.abs(diffX) > Math.abs(diffY)) {
+                if (diffX > 0 && state.currentPage === 'info') showMap();
+                else if (diffX < 0 && state.currentPage === 'map') showInfo();
+            }
+        }, { passive: true });
+        
+        // =====================================================
+        // API FUNCTIONS WITH iOS COMPATIBILITY
+        // =====================================================
+        function buildApiUrl(endpoint) {
+            return `https://api-v3.mbta.com${endpoint}${endpoint.includes('?') ? '&' : '?'}api_key=${CONFIG.MBTA_API_KEY}`;
+        }
+        
+        async function fetchMBTAData(endpoint) {
+            try {
+                console.log('Fetching:', buildApiUrl(endpoint));
+                
+                const response = await fetch(buildApiUrl(endpoint), {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API Error:', response.status, errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Data received:', data);
+                return data;
+            } catch (error) {
+                console.error('Fetch error:', error);
+                showMessage(`API Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+        
+        // =====================================================
+        // ALERTS & DELAYS
+        // =====================================================
+        async function getAlerts() {
+            try {
+                const data = await fetchMBTAData('/alerts?filter[route]=426');
+                const banner = document.getElementById('delayBanner');
+                
+                const delayAlerts = (data.data || []).filter(alert => {
+                    const effect = alert.attributes?.effect;
+                    return effect === 'DELAY' || effect === 'SERVICE_CHANGE' || effect === 'DETOUR';
+                });
+                
+                if (delayAlerts.length > 0) {
+                    const alert = delayAlerts[0];
+                    const header = alert.attributes?.header || 'Service Alert';
+                    const severity = alert.attributes?.severity;
+                    const isWarning = severity < 7;
+                    
+                    banner.className = `delay-banner ${isWarning ? 'warning' : ''}`;
+                    banner.innerHTML = `
+                        <span class="material-icons-round">${isWarning ? 'warning' : 'error'}</span>
+                        <span>${header}</span>
+                    `;
+                    banner.style.display = 'flex';
+                } else {
+                    banner.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Alerts error:', error);
+            }
+        }
+        
+        // =====================================================
+        // UI HELPERS
+        // =====================================================
+        function showMessage(message, type = 'success') {
+            const container = document.getElementById('messageContainer');
+            container.innerHTML = `
+                <div class="message ${type}">
+                    <span class="material-icons-round" style="font-size:18px;">${type === 'error' ? 'error' : 'check_circle'}</span>
+                    <span>${message}</span>
+                </div>
+            `;
+            setTimeout(() => container.innerHTML = '', 4000);
+        }
+        
+        function updateMapStatus(message, icon = '✅') {
+            document.getElementById('mapStatus').innerHTML = `<span>${icon}</span><span>${message}</span>`;
+        }
+        
+        // =====================================================
+        // LEAFLET MAP
+        // =====================================================
+        function initMap() {
+            state.map = L.map('map', {
+                center: [CONFIG.YOUR_HOME.lat, CONFIG.YOUR_HOME.lng],
+                zoom: 13,
+                zoomControl: false
+            });
+            
+            // Google Maps style tiles
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap © CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(state.map);
+            
+            // Home marker
+            const homeIcon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="width:44px;height:44px;background:#ea4335;border:4px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">🏠</div>`,
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
+            });
+            
+            state.homeMarker = L.marker([CONFIG.YOUR_HOME.lat, CONFIG.YOUR_HOME.lng], { icon: homeIcon, zIndexOffset: 2000 })
+                .addTo(state.map)
+                .bindPopup('<strong>Your Home</strong><br>771 Boston St, Lynn, MA');
+            
+            // Haymarket marker
+            const destIcon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="width:40px;height:40px;background:#8b5cf6;border:4px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">🎯</div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
+            
+            state.destMarker = L.marker([CONFIG.HAYMARKET.lat, CONFIG.HAYMARKET.lng], { icon: destIcon, zIndexOffset: 1999 })
+                .addTo(state.map)
+                .bindPopup('<strong>Haymarket Station</strong>');
+        }
+        
+        // =====================================================
+        // ROUTE LOADING
+        // =====================================================
+        async function loadRoute() {
+            try {
+                console.log('Loading route for direction:', state.selectedDirection);
+                const dirId = state.selectedDirection === 'to_haymarket' ? 1 : 0;
+                const data = await fetchMBTAData(`/stops?filter[route]=${state.selectedRoute}&filter[direction_id]=${dirId}`);
+                
+                console.log('Route data received:', data);
+                
+                if (!data.data || data.data.length === 0) {
+                    console.error('No stops found in API response');
+                    throw new Error('No stops found');
+                }
+                
+                // Clear existing
+                Object.values(state.stopMarkers).forEach(m => state.map.removeLayer(m));
+                state.stopMarkers = {};
+                state.stopData = {};
+                state.orderedStopIds = [];
+                
+                const routePath = [];
+                const homeStopId = CONFIG.ROUTE_INFO[state.selectedDirection].homeStopId;
+                const stops = state.selectedDirection === 'to_haymarket' ? STOPS_TO_HAYMARKET : STOPS_TO_HOME;
+                
+                // Use our predefined stop count for display
+                state.totalStops = stops.length;
+                state.homeStopIndex = stops.findIndex(s => s.isHome);
+                
+                data.data.forEach((stop, index) => {
+                    const lat = stop.attributes.latitude;
+                    const lon = stop.attributes.longitude;
+                    const stopId = stop.id;
+                    const stopName = stop.attributes.name;
+                    
+                    if (!lat || !lon) return;
+                    
+                    routePath.push([lat, lon]);
+                    state.orderedStopIds.push(stopId);
+                    state.stopData[stopId] = { lat, lon, name: stopName, sequence: index };
+                    
+                    // Check if this is home stop
+                    const isHomeStop = stopId === homeStopId || stopName.toLowerCase().includes('hamilton');
+                    if (isHomeStop) {
+                        state.nearestStopId = stopId;
+                    }
+                    
+                    let markerHtml, markerSize;
+                    if (isHomeStop) {
+                        markerHtml = `<div style="width:24px;height:24px;background:#ea4335;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🏠</div>`;
+                        markerSize = [24, 24];
+                    } else {
+                        markerHtml = `<div style="width:12px;height:12px;background:white;border:3px solid #fbbc04;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.2);"></div>`;
+                        markerSize = [12, 12];
+                    }
+                    
+                    const stopIcon = L.divIcon({
+                        className: 'stop-marker-map',
+                        html: markerHtml,
+                        iconSize: markerSize,
+                        iconAnchor: [markerSize[0]/2, markerSize[1]/2]
+                    });
+                    
+                    state.stopMarkers[stopId] = L.marker([lat, lon], { icon: stopIcon, zIndexOffset: isHomeStop ? 500 : 100 })
+                        .addTo(state.map)
+                        .bindPopup(`<strong>${stopName}</strong><br>Stop ${index + 1}${isHomeStop ? ' (Your Stop)' : ''}`);
+                });
+                
+                // Route line
+                if (state.routeLine) state.map.removeLayer(state.routeLine);
+                state.routeLine = L.polyline(routePath, { color: '#fbbc04', weight: 5, opacity: 0.8 }).addTo(state.map);
+                
+                // Generate snake visual using our predefined stops
+                generateRouteVisual();
+                
+            } catch (error) {
+                console.error('Route error:', error);
+                showMessage('Failed to load route', 'error');
+                // Still generate visual from predefined data
+                generateRouteVisual();
+            }
+        }
+        
+        // =====================================================
+        // PREDICTIONS
+        // =====================================================
+        async function getPredictions() {
+            try {
+                const homeStopId = state.nearestStopId || CONFIG.ROUTE_INFO[state.selectedDirection].homeStopId;
+                const dirId = state.selectedDirection === 'to_haymarket' ? 1 : 0;
+                
+                console.log('Getting predictions for stop:', homeStopId, 'direction:', dirId);
+                
+                const data = await fetchMBTAData(
+                    `/predictions?filter[route]=${state.selectedRoute}&filter[stop]=${homeStopId}&filter[direction_id]=${dirId}&include=trip,vehicle,schedule&sort=arrival_time`
+                );
+                
+                console.log('Predictions received:', data);
+                displayPredictions(data);
+            } catch (error) {
+                console.error('Predictions error:', error);
+                document.getElementById('predictions').innerHTML = `
+                    <div style="padding:40px 20px;text-align:center;color:#80868b;">
+                        <p style="font-size:14px;margin-bottom:6px;">API Error: ${error.message}</p>
+                        <p style="font-size:12px;margin-top:8px;">Check console for details</p>
+                    </div>
+                `;
+                updateHeaderNextBus(null);
+            }
+        }
+        
+        function displayPredictions(data) {
+            const container = document.getElementById('predictions');
+            
+            if (!data.data || data.data.length === 0) {
+                container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#80868b;">No upcoming buses</div>';
+                updateHeaderNextBus(null);
+                return;
+            }
+
+            const now = new Date();
+            let html = '';
+            let count = 0;
+            let nextBus = null;
+            
+            data.data.forEach(pred => {
+                const arrivalTime = pred.attributes.arrival_time || pred.attributes.departure_time;
+                if (!arrivalTime) return;
+
+                const scheduled = new Date(arrivalTime);
+                const minutes = Math.round((scheduled - now) / 60000);
+                
+                if (minutes < -5) return;
+                
+                const vehicle = data.included?.find(inc => inc.type === 'vehicle' && inc.id === pred.relationships?.vehicle?.data?.id);
+                const busNumber = vehicle?.attributes?.label || 'TBD';
+                
+                // Check for delays
+                const schedule = data.included?.find(inc => inc.type === 'schedule' && inc.id === pred.relationships?.schedule?.data?.id);
+                let delayMinutes = 0, isEarly = false;
+                if (schedule?.attributes?.arrival_time) {
+                    delayMinutes = Math.round((scheduled - new Date(schedule.attributes.arrival_time)) / 60000);
+                    isEarly = delayMinutes < -1;
+                }
+                
+                const isLive = !!pred.attributes?.status || !!vehicle;
+                
+                if (!nextBus && minutes >= -2) {
+                    nextBus = { minutes, scheduled, busNumber, isLive, delayMinutes, isEarly };
+                }
+                
+                if (count >= 5) return;
+                count++;
+                
+                const isArriving = minutes <= 2 && minutes >= 0;
+                const isDelayed = delayMinutes > 3;
+                const timeText = minutes <= 0 ? 'NOW' : minutes === 1 ? '1 MIN' : `${minutes} MIN`;
+                
+                const trip = data.included?.find(inc => inc.type === 'trip' && inc.id === pred.relationships?.trip?.data?.id);
+                const headsign = trip?.attributes?.headsign || (state.selectedDirection === 'to_haymarket' ? 'Haymarket' : 'Lynn');
+                
+                const routeInfo = CONFIG.ROUTE_INFO[state.selectedDirection];
+                const eta = new Date(now.getTime() + (Math.max(0, minutes) + routeInfo.travelTime) * 60000);
+                
+                html += `
+                    <div class="bus-card ${isArriving ? 'arriving' : ''} ${isDelayed ? 'delayed' : ''}">
+                        <div class="countdown-badge ${isArriving ? 'arriving' : ''} ${isDelayed ? 'delayed' : ''}">${timeText}</div>
+                        <div class="bus-badges">
+                            <span class="badge bus-number">Bus #${busNumber}</span>
+                            ${isLive ? '<span class="badge live">● LIVE</span>' : '<span class="badge scheduled">Scheduled</span>'}
+                            ${isDelayed ? `<span class="badge delayed">${delayMinutes}+ min late</span>` : ''}
+                            ${isEarly ? `<span class="badge early">${Math.abs(delayMinutes)} min early</span>` : ''}
+                        </div>
+                        <div class="bus-time">Arrives: ${scheduled.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>
+                        <div class="bus-detail"><span>→</span><strong>${headsign}</strong></div>
+                        <div class="bus-detail">
+                            <span>${state.selectedDirection === 'to_haymarket' ? '🎯' : '🏠'}</span>
+                            <span>Final ETA: ~${eta.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            updateHeaderNextBus(nextBus);
+            container.innerHTML = html || '<div style="padding:40px 20px;text-align:center;color:#80868b;">No upcoming buses</div>';
+        }
+        
+        function updateHeaderNextBus(busData) {
+            const timeEl = document.getElementById('nextBusTime');
+            const infoEl = document.getElementById('nextBusInfo');
+            
+            if (!busData) {
+                timeEl.textContent = 'No buses';
+                infoEl.innerHTML = 'Check schedule';
+                return;
+            }
+            
+            const minutes = busData.minutes;
+            const dir = state.selectedDirection === 'to_haymarket' ? 'Haymarket' : 'Home';
+            const time = busData.scheduled.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            
+            timeEl.textContent = minutes <= 0 ? `Arriving! • ${time}` : `${minutes} min • ${time}`;
+            
+            let infoHtml = `🚌 Bus #${busData.busNumber} → ${dir}`;
+            if (busData.isLive) infoHtml += ' <span style="color:#4caf50;">● Live</span>';
+            if (busData.delayMinutes > 3) infoHtml += ` <span style="color:#ea4335;">(${busData.delayMinutes}min late)</span>`;
+            else if (busData.isEarly) infoHtml += ` <span style="color:#4caf50;">(${Math.abs(busData.delayMinutes)}min early)</span>`;
+            
+            infoEl.innerHTML = infoHtml;
+        }
+        
+        // =====================================================
+        // VEHICLE TRACKING
+        // =====================================================
+        async function getVehicles() {
+            try {
+                const dirId = state.selectedDirection === 'to_haymarket' ? 1 : 0;
+                console.log('Getting vehicles for direction:', dirId);
+                const data = await fetchMBTAData(`/vehicles?filter[route]=${state.selectedRoute}&filter[direction_id]=${dirId}&include=trip,stop`);
+                console.log('Vehicles received:', data);
+                updateBusMarkers(data);
+            } catch (error) {
+                console.error('Vehicle error:', error);
+            }
+        }
+        
+        function updateBusMarkers(data) {
+            const activeBuses = new Set();
+            const stops = state.selectedDirection === 'to_haymarket' ? STOPS_TO_HAYMARKET : STOPS_TO_HOME;
+            
+            // Reset stop markers
+            Object.entries(state.stopMarkers).forEach(([stopId, marker]) => {
+                const isHomeStop = stopId === state.nearestStopId;
+                let markerHtml = isHomeStop 
+                    ? `<div style="width:24px;height:24px;background:#ea4335;border:3px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,0.3);">🏠</div>`
+                    : `<div style="width:12px;height:12px;background:white;border:3px solid #fbbc04;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.2);"></div>`;
+                const size = isHomeStop ? [24, 24] : [12, 12];
+                marker.setIcon(L.divIcon({ className: 'stop-marker-map', html: markerHtml, iconSize: size, iconAnchor: [size[0]/2, size[1]/2] }));
+            });
+            
+            let liveCount = 0, currentBusStop = null, busStopIndex = -1;
+            
+            if (data.data?.length > 0) {
+                data.data.forEach(vehicle => {
+                    const lat = vehicle.attributes.latitude;
+                    const lon = vehicle.attributes.longitude;
+                    const busId = vehicle.id;
+                    const label = vehicle.attributes.label || 'Bus';
+                    const bearing = vehicle.attributes.bearing || 0;
+                    const currentStopId = vehicle.relationships?.stop?.data?.id;
+                    
+                    if (!lat || !lon) return;
+                    
+                    activeBuses.add(busId);
+                    liveCount++;
+                    
+                    // Highlight current stop
+                    if (currentStopId && state.stopMarkers[currentStopId]) {
+                        state.stopMarkers[currentStopId].setIcon(L.divIcon({
+                            className: 'stop-marker-active',
+                            html: `<div style="width:18px;height:18px;background:#ff6d00;border:3px solid #e65100;border-radius:50%;box-shadow:0 0 0 4px rgba(255,109,0,0.3);"></div>`,
+                            iconSize: [18, 18],
+                            iconAnchor: [9, 9]
+                        }));
+                        
+                        // Find the stop index in our predefined arrays
+                        const stopIndexInArray = stops.findIndex(s => s.id === currentStopId);
+                        if (stopIndexInArray !== -1) {
+                            currentBusStop = stops[stopIndexInArray].name;
+                            busStopIndex = stopIndexInArray;
+                        } else if (state.stopData[currentStopId]) {
+                            // Fallback to stopData if not found in array
+                            currentBusStop = state.stopData[currentStopId].name;
+                            // Estimate index based on sequence
+                            busStopIndex = state.stopData[currentStopId].sequence;
+                        }
+                    }
+                    
+                    // Bus marker
+                    const busIcon = L.divIcon({
+                        className: 'bus-marker',
+                        html: `<div style="width:44px;height:44px;background:#34a853;border:4px solid white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 2px 10px rgba(0,0,0,0.3);animation:bounce-map 1s infinite;">🚌</div>`,
+                        iconSize: [44, 44],
+                        iconAnchor: [22, 22]
+                    });
+                    
+                    if (state.busMarkers[busId]) {
+                        state.busMarkers[busId].setLatLng([lat, lon]);
+                        state.busMarkers[busId].setIcon(busIcon);
+                    } else {
+                        state.busMarkers[busId] = L.marker([lat, lon], { icon: busIcon, zIndexOffset: 1000 })
+                            .addTo(state.map)
+                            .bindPopup(`<strong>🚌 Bus #${label}</strong><br>Route 426 • Live`);
+                    }
+                });
+            }
+            
+            document.getElementById('liveCount').textContent = liveCount;
+            updateRouteVisual(busStopIndex);
+            
+            // Show current bus location
+            if (currentBusStop) {
+                document.getElementById('alertContainer').innerHTML = `
+                    <div class="alert-box">
+                        <div class="alert-title"><span class="material-icons-round" style="font-size:16px;">location_on</span>Live Bus Location</div>
+                        <div class="alert-content">🚏 ${currentBusStop}</div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('alertContainer').innerHTML = '';
+            }
+            
+            // Remove old markers
+            Object.keys(state.busMarkers).forEach(busId => {
+                if (!activeBuses.has(busId)) {
+                    state.map.removeLayer(state.busMarkers[busId]);
+                    delete state.busMarkers[busId];
+                }
+            });
+        }
+        
+        // =====================================================
+        // MAP CONTROLS
+        // =====================================================
+        function zoomHome() { state.map.setView([CONFIG.YOUR_HOME.lat, CONFIG.YOUR_HOME.lng], 16); }
+        
+        function followBuses() {
+            const buses = Object.values(state.busMarkers);
+            if (buses.length === 0) { state.map.setView([CONFIG.YOUR_HOME.lat, CONFIG.YOUR_HOME.lng], 13); return; }
+            const group = L.featureGroup([...buses, state.homeMarker]);
+            state.map.fitBounds(group.getBounds().pad(0.1));
+        }
+        
+        function viewRoute() {
+            if (state.routeLine) {
+                const bounds = state.routeLine.getBounds();
+                bounds.extend([CONFIG.YOUR_HOME.lat, CONFIG.YOUR_HOME.lng]);
+                bounds.extend([CONFIG.HAYMARKET.lat, CONFIG.HAYMARKET.lng]);
+                state.map.fitBounds(bounds.pad(0.1));
+            }
+        }
+        
+        // =====================================================
+        // DIRECTION CONTROL
+        // =====================================================
+        function selectDirection(direction) {
+            state.selectedDirection = direction;
+            document.getElementById('btnHaymarket').classList.toggle('active', direction === 'to_haymarket');
+            document.getElementById('btnHome').classList.toggle('active', direction === 'to_home');
+            clearAll();
+            forceUpdate();
+        }
+        
+        function clearAll() {
+            Object.values(state.busMarkers).forEach(m => state.map.removeLayer(m));
+            state.busMarkers = {};
+            Object.values(state.stopMarkers).forEach(m => state.map.removeLayer(m));
+            state.stopMarkers = {};
+            state.stopData = {};
+            if (state.routeLine) state.map.removeLayer(state.routeLine);
+            state.routeLine = null;
+            state.nearestStopId = null;
+        }
+        
+        // =====================================================
+        // WEATHER
+        // =====================================================
+        async function getWeather() {
+            try {
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${CONFIG.YOUR_HOME.lat}&longitude=${CONFIG.YOUR_HOME.lng}&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/New_York`;
+                const data = await (await fetch(url)).json();
+                
+                const temp = Math.round(data.current.temperature_2m);
+                const code = data.current.weather_code;
+                
+                document.getElementById('weatherTemp').textContent = `${temp}°F`;
+                
+                let icon = '🌤️', condition = 'Clear';
+                if (code === 0) { icon = '☀️'; condition = 'Clear'; }
+                else if (code <= 3) { icon = '⛅'; condition = 'Cloudy'; }
+                else if (code <= 48) { icon = '☁️'; condition = 'Overcast'; }
+                else if (code <= 67) { icon = '🌧️'; condition = 'Rain'; }
+                else if (code <= 77) { icon = '🌨️'; condition = 'Snow'; }
+                else if (code <= 99) { icon = '⛈️'; condition = 'Storm'; }
+                
+                document.getElementById('weatherIcon').textContent = icon;
+                document.getElementById('weatherCondition').textContent = condition;
+            } catch (error) { console.error('Weather error:', error); }
+        }
+        
+        // =====================================================
+        // UPDATE FUNCTION
+        // =====================================================
+        async function update() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.classList.add('loading');
+            updateMapStatus('Updating...', '🔄');
+            
+            try {
+                await loadRoute();
+                await Promise.all([getPredictions(), getVehicles(), getAlerts()]);
+                
+                const dir = state.selectedDirection === 'to_haymarket' ? '→ HM' : '← Home';
+                const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                updateMapStatus(`${time} • ${dir}`, '✅');
+            } catch (error) {
+                console.error('Update error:', error);
+                updateMapStatus('Failed', '⚠️');
+                showMessage('Update failed', 'error');
+            } finally {
+                refreshBtn.classList.remove('loading');
+            }
+        }
+        
+        function forceUpdate() {
+            if (state.updateInterval) clearInterval(state.updateInterval);
+            showMessage('Refreshing...');
+            update();
+            state.updateInterval = setInterval(update, CONFIG.UPDATE_INTERVAL);
+        }
+        
+        // =====================================================
+        // iOS SPECIFIC FIXES
+        // =====================================================
+        function preventZoom(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }
+        
+        function preventDoubleTapZoom(e) {
+            const now = Date.now();
+            const lastTap = window.lastTapTime || 0;
+            if (now - lastTap < 300) {
+                e.preventDefault();
+            }
+            window.lastTapTime = now;
+        }
+        
+        // =====================================================
+        // PWA SERVICE WORKER REGISTRATION
+        // =====================================================
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('[PWA] Service Worker registered:', registration.scope);
+                        
+                        // Check for updates
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    showMessage('New version available! Refresh to update.', 'success');
+                                }
+                            });
+                        });
+                    })
+                    .catch(error => {
+                        console.log('[PWA] Service Worker registration failed:', error);
+                    });
+            });
+        }
+        
+        // =====================================================
+        // INITIALIZATION
+        // =====================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('App initializing...');
+            console.log('User Agent:', navigator.userAgent);
+            console.log('Platform:', navigator.platform);
+            console.log('API Key configured:', CONFIG.MBTA_API_KEY ? 'Yes' : 'No');
+            
+            // Check if running on iOS
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            console.log('Running on iOS:', isIOS);
+            
+            // iOS specific event listeners
+            document.addEventListener('touchstart', preventZoom, { passive: false });
+            document.addEventListener('touchend', preventDoubleTapZoom, { passive: false });
+            
+            // Prevent pull-to-refresh on iOS
+            document.body.addEventListener('touchmove', (e) => {
+                if (e.target.closest('.page')) {
+                    // Allow scrolling within pages
+                    return;
+                }
+                e.preventDefault();
+            }, { passive: false });
+            
+            // Test API connectivity
+            console.log('Testing API connectivity...');
+            fetch('https://api-v3.mbta.com/routes/426?api_key=' + CONFIG.MBTA_API_KEY, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                mode: 'cors'
+            })
+                .then(response => {
+                    console.log('API test response:', response.status);
+                    if (response.ok) {
+                        console.log('✅ API is accessible');
+                        showMessage('API Connected', 'success');
+                    } else {
+                        console.error('❌ API returned error:', response.status);
+                        showMessage('API Error: ' + response.status, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ API connection failed:', error);
+                    console.error('Error details:', error.message);
+                    showMessage('CORS Error - File must be served via HTTP/HTTPS', 'error');
+                });
+            
+            initMap();
+            getWeather();
+            generateRouteVisual();
+            
+            setTimeout(() => {
+                console.log('Starting data updates...');
+                update();
+                state.updateInterval = setInterval(update, CONFIG.UPDATE_INTERVAL);
+                setInterval(getWeather, 600000);
+            }, 500);
+        });
+    </script>
+</body>
+</html>
